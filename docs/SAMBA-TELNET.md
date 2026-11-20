@@ -46,7 +46,7 @@ SMB. Use the SMB1 client config in this kit; modern `smbclient` refuses this old
 server by default.
 
 ```sh
-cd latestt2122a
+# run all commands from the repository root
 SMB="smbclient -s tools/smb.conf //192.168.1.1/Samba_Share -U admin%1234"
 
 # download the live config

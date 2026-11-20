@@ -69,7 +69,7 @@ Always prefer your own stock image. Dump it first (see
 [RECOVERY.md](RECOVERY.md)), then:
 
 ```sh
-cd latestt2122a
+# run all commands from the repository root
 
 # inspect only
 python3 tools/t2122a_patch.py --check /path/to/your-stock.bin
