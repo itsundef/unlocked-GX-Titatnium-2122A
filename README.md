@@ -124,6 +124,7 @@ The updater preserves the config partition, so the existing WAN/PPPoE profile
 normally survives. Check it before reconnecting the fibre.
 
 ---
+<img width="735" height="1280" alt="photo_2026-11-20_17-21-05" src="https://github.com/user-attachments/assets/53f506df-85cb-47ce-bd93-9dd4f5fa04ff" />
 
 ## What is in the kit
 
