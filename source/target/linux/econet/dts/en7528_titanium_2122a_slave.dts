@@ -1,0 +1,305 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/dts-v1/;
+
+#include "en7528.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
+
+/*
+ * Excitel Titanium T2122A — EcoNet/Airoha EN7528, MIPS 1004Kc.
+ *
+ * Variant that boots OpenWrt from the "tclinux_slave" bank. The stock
+ * V1.32EXU firmware stays in the main bank as a fallback; the boot flag byte
+ * at 0xdfc0000 picks the bank (0x30 = main, 0x31 = slave).
+ *
+ * VERIFIED on this unit:
+ *   - SoC EN7528 (econet,en7528 subtarget), little-endian 1004Kc
+ *   - RAM 256 MB DDR3 (240 MB usable, 0x2000-0x0effffff)
+ *   - SPI-NAND FORESEE FS35ND02GS3Y2 (256 MB, ID cd eb 11)
+ *   - 2 x Gigabit Ethernet (MT7530 GPHYs at MDIO 9 and 10), 1 x POTS/FXS
+ *   - Wi-Fi MediaTek MT7663 + MT7603 -> mt76 (mt7615e + mt7603)
+ *   - Flash partition offsets: bootloader@0, romfile@0x40000,
+ *     tclinux@0x80000 (0x1900000), tclinux_slave@0x1980000 (0x1900000),
+ *     opt0@0x3280000, opt1@0x3a80000, ubifs@0x4280000,
+ *     reservearea@0xddc0000 (0x240000) <- boot flag at +0x200000
+ *   - LEDs on GPIO 2/3/4 (red/green/blue), reset button on GPIO 0.
+ *     There is no WPS button on this model.
+ *
+ * UNVERIFIED:
+ *   - Wi-Fi precal/EEPROM offsets inside reservearea (0x40000 / 0x1c0000)
+ *   - usb vbus GPIO
+ */
+
+/ {
+	model = "Titanium-2122A (slave bank)";
+	compatible = "titanium,t2122a", "econet,en7528";
+
+	aliases {
+		led-boot = &led_green;
+		led-failsafe = &led_red;
+		led-running = &led_green;
+		led-upgrade = &led_blue;
+		serial0 = &uart;
+	};
+
+	memory@0 {
+		device_type = "memory";
+		/* 256 MB DDR3. The bootloader reports 240 MB usable
+		 * (0x2000-0x0effffff); keep the top 8 MB reserved as shipped. */
+		reg = <0x00000000 0x0e800000>;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		linux,usable-memory-range = <0x00020000 0x0e7e0000>;
+		/* Attach UBI on the spare "opt0" partition. Its rootfs_data
+		 * volume is pre-formatted with UBIFS (this kernel has no JFFS2),
+		 * so fstools mounts it as the persistent /overlay. opt0 is
+		 * untouched by the stock firmware, so the overlay survives bank
+		 * switches to stock and back. */
+		bootargs = "ubi.mtd=opt0";
+	};
+
+	/*
+	 * Single tri-colour system/status LED on GPIO 2/3/4 (red/green/blue).
+	 * Source: stock /userfs/led.conf (tabular led_no/gpio/mode, read by
+	 * tcledctrl.ko), cross-checked via ledctl1 (led_no 78/79/80 ->
+	 * gpio 2/3/4). VERIFIED on hardware: driving red lit the panel LED solid
+	 * red and green is the default power LED -> GPIO map + ACTIVE_LOW polarity
+	 * confirmed. The RJ45 link/activity LEDs of the two GE jacks are driven
+	 * by the MT7530 switch/PHY in hardware (a linked port lights with no SoC
+	 * GPIO involved), so they are intentionally NOT gpio-leds. led.conf's
+	 * LANPORT GPIOs (31/33/35/37 status, 30/32/34/36 act) drive no visible
+	 * front-panel LED on this board and were dropped after on-HW testing.
+	 */
+	leds {
+		compatible = "gpio-leds";
+
+		led_red: red {
+			color = <LED_COLOR_ID_RED>;
+			function = LED_FUNCTION_STATUS;
+			gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
+		};
+
+		led_green: green {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_POWER;
+			gpios = <&gpio0 3 GPIO_ACTIVE_LOW>;
+		};
+
+		led_blue: blue {
+			color = <LED_COLOR_ID_BLUE>;
+			function = LED_FUNCTION_WAN;
+			gpios = <&gpio0 4 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	/* Reset button only; this model has no WPS button. GPIO 1 reads low
+	 * on the stock board and must not be claimed as a key. */
+	keys {
+		compatible = "gpio-keys-polled";
+		poll-interval = <100>;
+
+		key-reset {
+			label = "reset";
+			gpios = <&gpio0 0 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+	};
+
+	reg_usb_vbus: regulator-usb-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "usb-vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;	/* UNVERIFIED */
+		enable-active-high;
+	};
+};
+
+&usb {
+	status = "okay";
+	vbus-supply = <&reg_usb_vbus>;
+};
+
+&pcie0 {
+	status = "okay";
+};
+
+&pcie1 {
+	status = "okay";
+};
+
+/* Wi-Fi MT7663 (VERIFIED chip); MAC/precal nvmem offsets inherited — UNVERIFIED */
+&slot0 {
+	status = "okay";
+
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		nvmem-cells = <&macaddr_boot 8>, <&eeprom_reservearea_1c0000>;
+		nvmem-cell-names = "mac-address", "eeprom";
+		ieee80211-freq-limit = <2400000 2500000>;
+	};
+};
+
+&slot1 {
+	status = "okay";
+
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		nvmem-cells = <&macaddr_boot 9>, <&eeprom_reservearea_40000>;
+		nvmem-cell-names = "mac-address", "eeprom";
+		ieee80211-freq-limit = <5000000 6000000>;
+	};
+};
+
+&gmac0 {
+	status = "okay";
+	nvmem-cells = <&macaddr_boot 7>;
+	nvmem-cell-names = "mac-address";
+};
+
+/*
+ * MT7530 DSA switch. The shared en7528.dtsi shrinks the frame-engine
+ * register window so econet-eth no longer sets up the dumb switch; the
+ * on-die MT7530 must be driven by the mt7530 DSA driver instead, or the
+ * board has no LAN.
+ *
+ * This model has exactly two GE jacks: LAN1 = switch port 1 (PHY 9) and
+ * LAN2 = switch port 2 (PHY 10). Switch ports 3/4 have no magnetics and
+ * their PHYs are left disabled.
+ */
+&switch {
+	status = "okay";
+};
+
+&gsw_port1 {
+	status = "okay";
+	label = "lan1";
+};
+
+&gsw_port2 {
+	status = "okay";
+	label = "lan2";
+};
+
+/* The two on-die GPHYs are MT7530-integrated 1GbE PHYs (ID 03a2:9491).
+ * Declaring the ID keeps the PHY devices usable even if the first MDIO
+ * access after the switch PHY reset races the PHY boot (the mt7530 driver
+ * also waits for the PHYs to settle before scanning the bus). */
+&gsw_phy1 {
+	compatible = "ethernet-phy-id03a2.9491", "ethernet-phy-ieee802.3-c22";
+};
+
+&gsw_phy2 {
+	compatible = "ethernet-phy-id03a2.9491", "ethernet-phy-ieee802.3-c22";
+};
+
+&gsw_phy3 {
+	status = "disabled";
+};
+
+&gsw_phy4 {
+	status = "disabled";
+};
+
+/* --- Flash layout for Titanium-2122A (128 MB SPI-NAND, verified from /proc/mtd) --- */
+&nand {
+	status = "okay";
+	econet,bmt;
+	econet,bbt-table-size = <250>;
+
+	partitions: partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0 {
+			label = "bootloader";
+			reg = <0x0 0x40000>;
+			read-only;
+			/* MAC base location verified at 0x3fe48 in an mtd0 backup. */
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				macaddr_boot: macaddr@3fe48 {
+					compatible = "mac-base";
+					reg = <0x3fe48 0x6>;
+					#nvmem-cell-cells = <1>;
+				};
+			};
+		};
+
+		partition@40000 {
+			label = "romfile";
+			reg = <0x40000 0x40000>;
+		};
+
+		partition@80000 {
+			label = "tclinux";
+			reg = <0x80000 0x1900000>;
+			econet,enable-remap;
+		};
+
+		/* main-bank squashfs area (unused when booting the slave bank) */
+		partition@480000 {
+			label = "rootfs_main";
+			reg = <0x480000 0x1500000>;
+		};
+
+		partition@1980000 {
+			label = "tclinux_slave";
+			reg = <0x1980000 0x1900000>;
+			econet,enable-remap;
+		};
+
+		/* squashfs starts at 0x1980000+0x400000 (kernel padded to 4 MB) */
+		partition@1d80000 {
+			label = "rootfs";
+			reg = <0x1d80000 0x1500000>;
+			linux,rootfs;
+		};
+
+		partition@3280000 {
+			label = "opt0";
+			reg = <0x3280000 0x800000>;
+		};
+
+		partition@3a80000 {
+			label = "opt1";
+			reg = <0x3a80000 0x800000>;
+		};
+
+		partition@4280000 {
+			label = "ubifs";
+			reg = <0x4280000 0x1000000>;
+		};
+
+		/* Boot flag byte at 0xddc0000 + 0x200000 selects the bank.
+		 * reservearea is the last 0x240000 bytes of the 256 MB flash,
+		 * exactly as on the DASAN/JCOW407 reference. */
+		partition@ddc0000 {
+			label = "reservearea";
+			reg = <0xddc0000 0x240000>;
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				eeprom_reservearea_40000: eeprom@40000 {
+					reg = <0x40000 0x4da8>;
+				};
+
+				eeprom_reservearea_1c0000: eeprom@1c0000 {
+					reg = <0x1c0000 0x400>;
+				};
+			};
+		};
+	};
+};

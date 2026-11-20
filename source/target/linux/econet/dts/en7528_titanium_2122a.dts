@@ -1,0 +1,293 @@
+// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+/dts-v1/;
+
+#include "en7528.dtsi"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
+
+/*
+ * JioFiber JCOW407 (Reliance Jio GPON ONT) — EcoNet/Airoha EN7528, MIPS 1004Kc.
+ * First-cut port derived from the in-tree DASAN H660GM-A (Airtel) EN7528 ONT.
+ *
+ * VERIFIED from this unit's serial boot capture:
+ *   - SoC EN7528 (econet,en7528 subtarget), little-endian 1004Kc
+ *   - RAM 256 MB DDR3
+ *   - SPI-NAND FORESEE FS35ND02GS3Y2 (256 MB, ID cd eb 11)
+ *   - Wi-Fi MediaTek MT7663 (ChipID 0x7663) -> mt76 (mt7615e + mt7603)
+ *   - Flash partition offsets from /proc/mtd sizes: bootloader@0, romfile@0x40000,
+ *     tclinux@0x80000 (0x1900000), tclinux_slave@0x1980000 (0x1900000),
+ *     opt0@0x3280000, opt1@0x3a80000, ubifs@0x4280000,
+ *     reservearea@0xddc0000 (0x240000) <- boot flag lives at +0x200000
+ *     (verified by writing 0xdfc0000 from the bootloader)
+ *
+ * UNVERIFIED (inherited from DASAN H660GM-A — confirm on-device once root):
+ *   - LED / gpio-keys GPIO numbers
+ *   - MAC base offset inside romfile/dzs (DASAN: macaddr@a in "dzs")
+ *   - Wi-Fi precal/EEPROM offsets inside reservearea (DASAN: 0x40000 / 0x1c0000)
+ *   - usb vbus GPIO, ethernet switch/PHY port map
+ */
+
+/ {
+	model = "Titanium-2122A";
+	compatible = "titanium,t2122a", "econet,en7528";
+
+	aliases {
+		led-boot = &led_green;
+		led-failsafe = &led_red;
+		led-running = &led_green;
+		led-upgrade = &led_blue;
+		serial0 = &uart;
+	};
+
+	memory@0 {
+		device_type = "memory";
+		/* 512 MB physical, BUT SoC peripheral MMIO sits at 0x1fbf0000 (uart),
+		 * 0x1fb8xxxx (pcie), 0x1fb90000 (usb). A flat 0x0-0x1fffffff RAM node
+		 * overlaps that block, so ioremap() of the UART returns NULL and the
+		 * 8250 probe panics in set_mctrl. The vendor kernel caps usable RAM at
+		 * 0x1affffff, so limit RAM to 0x1b000000 (432 MB) below the MMIO hole. */
+		reg = <0x00000000 0x0e800000>;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+		linux,usable-memory-range = <0x00020000 0x0e7e0000>;
+		/* Attach UBI on the "opt0" partition (mtd) at boot so fstools
+		 * mounts its "rootfs_data" volume as the /overlay — persistent
+		 * config on NAND. opt0 is used because the stock firmware owns the
+		 * "ubifs"/"ubifs2" partitions (its config_data /flash + config_data2
+		 * /flash2) and reformats them on boot, so putting the OpenWrt overlay
+		 * there would make stock (Slot A) and OpenWrt clobber each other's
+		 * data. opt0 is untouched by stock, so the two coexist. jffs2-in-
+		 * mtdblock split does not work on NAND. */
+		bootargs = "ubi.mtd=opt0";
+	};
+
+	/*
+	 * Single tri-colour system/status LED on GPIO 2/3/4 (red/green/blue).
+	 * Source: stock JCOW407_R2.35 /userfs/led.conf (tabular led_no/gpio/mode,
+	 * read by tcledctrl.ko), cross-checked via ledctl1 (led_no 78/79/80 ->
+	 * gpio 2/3/4). VERIFIED on hardware: driving red lit the panel LED solid
+	 * red and green is the default power LED -> GPIO map + ACTIVE_LOW polarity
+	 * confirmed. The four RJ45 link/activity LEDs are driven by the MT7530
+	 * switch/PHY in hardware (a linked port lights with no SoC GPIO involved),
+	 * so they are intentionally NOT gpio-leds. led.conf's LANPORT GPIOs
+	 * (31/33/35/37 status, 30/32/34/36 act) drive no visible front-panel LED
+	 * on this board and were dropped after on-HW testing.
+	 */
+	leds {
+		compatible = "gpio-leds";
+
+		led_red: red {
+			color = <LED_COLOR_ID_RED>;
+			function = LED_FUNCTION_STATUS;
+			gpios = <&gpio0 2 GPIO_ACTIVE_LOW>;
+		};
+
+		led_green: green {
+			color = <LED_COLOR_ID_GREEN>;
+			function = LED_FUNCTION_POWER;
+			gpios = <&gpio0 3 GPIO_ACTIVE_LOW>;
+		};
+
+		led_blue: blue {
+			color = <LED_COLOR_ID_BLUE>;
+			function = LED_FUNCTION_WAN;
+			gpios = <&gpio0 4 GPIO_ACTIVE_LOW>;
+		};
+	};
+
+	/* buttons: stock led.conf LED_SYS_RESET=gpio0, LED_WLAN_WPS=gpio1 (mode 5=input) */
+	keys {
+		compatible = "gpio-keys-polled";
+		poll-interval = <100>;
+
+		key-reset {
+			label = "reset";
+			gpios = <&gpio0 0 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RESTART>;
+		};
+
+		key-wps {
+			label = "wps";
+			gpios = <&gpio0 1 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_WPS_BUTTON>;
+		};
+	};
+
+	reg_usb_vbus: regulator-usb-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "usb-vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpios = <&gpio0 9 GPIO_ACTIVE_HIGH>;	/* UNVERIFIED */
+		enable-active-high;
+	};
+};
+
+&usb {
+	status = "okay";
+	vbus-supply = <&reg_usb_vbus>;
+};
+
+&pcie0 {
+	status = "okay";
+};
+
+&pcie1 {
+	status = "okay";
+};
+
+/* Wi-Fi MT7663 (VERIFIED chip); MAC/precal nvmem offsets inherited — UNVERIFIED */
+&slot0 {
+	status = "okay";
+
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		nvmem-cells = <&macaddr_boot 8>, <&eeprom_reservearea_1c0000>;
+		nvmem-cell-names = "mac-address", "eeprom";
+		ieee80211-freq-limit = <2400000 2500000>;
+	};
+};
+
+&slot1 {
+	status = "okay";
+
+	wifi@0,0 {
+		compatible = "mediatek,mt76";
+		reg = <0x0000 0 0 0 0>;
+		nvmem-cells = <&macaddr_boot 9>, <&eeprom_reservearea_40000>;
+		nvmem-cell-names = "mac-address", "eeprom";
+		ieee80211-freq-limit = <5000000 6000000>;
+	};
+};
+
+&gmac0 {
+	status = "okay";
+	nvmem-cells = <&macaddr_boot 7>;
+	nvmem-cell-names = "mac-address";
+};
+
+/*
+ * MT7530 DSA switch. The shared en7528.dtsi shrinks the frame-engine
+ * register window so econet-eth no longer sets up the dumb switch; the
+ * on-die MT7530 must be driven by the mt7530 DSA driver instead, or the
+ * board has no LAN. Socket-to-port mapping is UNVERIFIED — labels are in
+ * switch-port order for now.
+ */
+&switch {
+	status = "okay";
+};
+
+&gsw_port1 {
+	status = "okay";
+	label = "lan1";
+};
+
+&gsw_port2 {
+	status = "okay";
+	label = "lan2";
+};
+
+&gsw_port3 {
+	status = "okay";
+	label = "lan3";
+};
+
+&gsw_port4 {
+	status = "okay";
+	label = "lan4";
+};
+
+/* --- Flash layout for Titanium-2122A (128 MB SPI-NAND, verified from /proc/mtd) --- */
+&nand {
+	status = "okay";
+	econet,bmt;
+	econet,bbt-table-size = <250>;
+
+	partitions: partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0 {
+			label = "bootloader";
+			reg = <0x0 0x40000>;
+			read-only;
+			/* MAC base location verified at 0x3fe48 in an mtd0 backup. */
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				macaddr_boot: macaddr@3fe48 {
+					compatible = "mac-base";
+					reg = <0x3fe48 0x6>;
+					#nvmem-cell-cells = <1>;
+				};
+			};
+		};
+
+		partition@40000 {
+			label = "romfile";
+			reg = <0x40000 0x40000>;
+		};
+
+		partition@80000 {
+			label = "tclinux";
+			reg = <0x80000 0x1900000>;
+			econet,enable-remap;
+		};
+
+		/* squashfs starts at 0x80000+0x400000 (kernel padded to 4 MB) */
+		partition@480000 {
+			label = "rootfs";
+			reg = <0x480000 0x1500000>;
+			linux,rootfs;
+		};
+
+		partition@1980000 {
+			label = "tclinux_slave";
+			reg = <0x1980000 0x1900000>;
+		};
+
+		partition@3280000 {
+			label = "opt0";
+			reg = <0x3280000 0x800000>;
+		};
+
+		partition@3a80000 {
+			label = "opt1";
+			reg = <0x3a80000 0x800000>;
+		};
+
+		partition@4280000 {
+			label = "ubifs";
+			reg = <0x4280000 0x1000000>;
+		};
+
+		/* Boot flag byte at 0xddc0000 + 0x200000 selects the bank.
+		 * reservearea is the last 0x240000 bytes of the 256 MB flash,
+		 * exactly as on the DASAN/JCOW407 reference. */
+		partition@ddc0000 {
+			label = "reservearea";
+			reg = <0xddc0000 0x240000>;
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				eeprom_reservearea_40000: eeprom@40000 {
+					reg = <0x40000 0x4da8>;
+				};
+
+				eeprom_reservearea_1c0000: eeprom@1c0000 {
+					reg = <0x1c0000 0x400>;
+				};
+			};
+		};
+	};
+};

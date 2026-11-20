@@ -1,0 +1,31 @@
+CONFIG_TARGET_econet=y
+CONFIG_TARGET_econet_en7528=y
+CONFIG_TARGET_econet_en7528_DEVICE_titanium_2122a_slave=y
+CONFIG_DRIVER_11AX_SUPPORT=y
+CONFIG_FFMPEG_LAME=y
+# CONFIG_FFMPEG_SHINE is not set
+CONFIG_KERNEL_IO_URING=y
+CONFIG_KERNEL_RELAY=y
+CONFIG_PACKAGE_airoha-en8811h-firmware=y
+CONFIG_PACKAGE_eip197-mini-firmware=y
+CONFIG_PACKAGE_fit-check-sign=y
+CONFIG_PACKAGE_kmod-crypto-authenc=y
+CONFIG_PACKAGE_kmod-crypto-des=y
+CONFIG_PACKAGE_kmod-crypto-md5=y
+CONFIG_PACKAGE_kmod-crypto-sha1=y
+CONFIG_PACKAGE_kmod-crypto-sha256=y
+CONFIG_PACKAGE_kmod-libphy=y
+CONFIG_PACKAGE_kmod-mt7915e=y
+CONFIG_PACKAGE_kmod-phy-airoha-en8811h=y
+CONFIG_PACKAGE_kmod-regmap-core=y
+CONFIG_PACKAGE_kmod-regmap-i2c=y
+CONFIG_PACKAGE_kmod-rtc-pcf8563=y
+CONFIG_PACKAGE_kmod-thermal=y
+CONFIG_PACKAGE_kmod-usb-xhci-hcd=y
+# CONFIG_PACKAGE_kmod-usb2 is not set
+CONFIG_PACKAGE_kmod-usb3=y
+CONFIG_PACKAGE_mt7981-wo-firmware=y
+# CONFIG_PACKAGE_nand-utils is not set
+CONFIG_PACKAGE_uboot-envtools=y
+CONFIG_TARGET_INITRAMFS_COMPRESSION_XZ=y
+CONFIG_TARGET_ROOTFS_INITRAMFS=y

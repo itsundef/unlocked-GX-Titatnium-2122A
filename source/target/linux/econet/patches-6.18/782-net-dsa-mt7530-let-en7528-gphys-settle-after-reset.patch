@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: OpenWrt Econet port <openwrt@localhost>
+Date: Tue, 17 Nov 2026 00:00:00 +0000
+Subject: [PATCH] net: dsa: mt7530: let EN7528 GPHYs settle after reset
+
+mt7988_setup(), reused for the EN7528, resets the integrated GPHYs with
+SYS_CTRL_PHY_RST and returns immediately.  mt753x_setup() then registers
+the MDIO bus and scans it.  On the EN7528 the first transaction (MDIO
+address 9) can still hit a PHY that has not finished booting: its ID
+reads back as zero, no PHY driver binds, and phylink later fails with an
+empty supported/advertisement mask, which leaves that LAN port dead.
+
+Wait for the PHYs to come out of reset on the EN7528 before scanning the
+internal MDIO bus.
+
+Signed-off-by: OpenWrt Econet port <openwrt@localhost>
+---
+--- a/drivers/net/dsa/mt7530.c
++++ b/drivers/net/dsa/mt7530.c
+@@ -3294,6 +3294,14 @@
+ 	/* Reset the switch PHYs */
+ 	mt7530_write(priv, MT7530_SYS_CTRL, SYS_CTRL_PHY_RST);
+ 
++	/* The EN7528 GPHYs need a moment to boot before they answer on the
++	 * internal MDIO bus. Without this the first scan reads the ID of
++	 * PHY 9 as zero, no driver binds, and phylink ends up with an empty
++	 * supported/advertisement mask, leaving lan1 dead.
++	 */
++	if (priv->id == ID_EN7528)
++		msleep(200);
++
+ 	return mt7531_setup_common(ds);
+ }
+ 
