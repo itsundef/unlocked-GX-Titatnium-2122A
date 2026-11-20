@@ -131,6 +131,7 @@ normally survives. Check it before reconnecting the fibre.
 ```
 README.md                       this file
 docs/
+  ACCESS-RECOVERY.md            all logins, UART/bldr, boot flag, locked-out fixes
   SAMBA-TELNET.md               root shell via Samba magic script (no flash)
   FIRMWARE.md                   HDR2 format, checks, patcher, tested images
   VARIANTS.md                   Excitel / Airtel / other; how to find your model
