@@ -12,11 +12,13 @@ MAC, serial number, Wi-Fi key or PPPoE credentials.
 
 | Access method | Where | User | Password | Notes |
 |---|---|---|---|---|
-| Stock web UI | `http://192.168.1.1/` | `excitel` | `exc@123` | Excitel stock default; often changed by the ISP |
-| Stock web UI (after unlock) | `http://192.168.1.1/` | `admin` | MAC from the label | Lowercase, no separators; varies by build/ISP |
+| Stock web UI (Excitel, before provisioning) | `http://192.168.1.1/` | `excitel` | `exc@123` | Excitel stock default; often changed by the ISP |
+| Stock web UI (generic V1.30/V1.32) | `http://192.168.1.1/` | `admin` | `nE7jA%5m` | Also `GENEXIS`/`1234` and `user3`/`1234` |
+| Stock web UI (after ISP provisioning) | `http://192.168.1.1/` | `admin` | MAC from the label | Lowercase, no separators; varies by build/ISP |
 | Samba share | `\\192.168.1.1\Samba_Share` | `admin` | `1234` | Share maps to `/` and runs as root; enable under APP → Samba |
 | One-shot root telnet | `192.168.1.1:23` | — | — | Started by the Samba magic script; no password, `uid=0(root)` |
-| Persistent vendor telnet | `192.168.1.1:56090` | `excitel` | MAC from the label | Enabled with `tcapi`, survives reboot; normal `/bin/login` |
+| Persistent vendor telnet (generic V1.30/V1.32) | `192.168.1.1:56090` | `admin` | `1234` | `/usr/etc/passwd`, normal `/bin/login` |
+| Persistent vendor telnet (Excitel after provisioning) | `192.168.1.1:56090` | `excitel` | MAC from the label | Enabled with `tcapi`, survives reboot |
 | Bootloader (bldr) | UART, 115200 8N1 | `telecomadmin` | `nE7jA%5m` | 3-second key window, press a key then `b`; prompt `bldr>` |
 | OpenWrt SSH | `192.168.1.99` (or `.1`) | `root` | empty | After the OpenWrt port; dropbear |
 | OpenWrt LuCI | `http://192.168.1.99/` | `root` | empty | 403 on first fetch is the login page, not a broken install |
@@ -27,6 +29,52 @@ lowercase hex digits with no colons or dashes.
 
 If a web password has been changed and you do not know it, skip straight to the
 Samba route (§2) or the bootloader (§3).
+
+### Defaults are not guaranteed — dump the real ones from your own unit
+
+The bootloader login above (`telecomadmin` / `nE7jA%5m`) was confirmed working
+on the development unit by serial capture, but ISPs routinely change the
+web/telnet accounts through TR-069 after installation. On the live Excitel
+unit, after provisioning, the observed logins were web `admin` / MAC and telnet
+56090 `excitel` / MAC (before provisioning the web login was
+`excitel` / `exc@123`). So trust your own dump, not any published table.
+
+While you still have a root shell, read the account table and system passwd:
+
+```sh
+# vendor account table: web, telnet, FTP and console accounts
+grep -A12 '<Account>' /userfs/romfile*.cfg
+
+# system accounts used by /bin/login on the 56090 telnet service
+cat /usr/etc/passwd
+cat /usr/etc/shadow 2>/dev/null
+
+# the port the telnet service really listens on
+grep telnet /usr/etc/services
+```
+
+For reference, the stock V1.30/V1.32 rootfs extracted during this project
+contains:
+
+```xml
+<Account>
+  <TelnetEntry  Active="Yes" telnet_username="admin" telnet_passwd="1234" telnet_port="23" telnet_active="Yes" />
+  <FtpCommon    Active="No"  ftp_username="admin"   ftp_passwd="1234"   ftp_port="21" />
+  <ConsoleEntry Active="Yes" console_username="admin" console_passwd="1234" />
+  <Entry0 Active="Yes" username="admin"   web_passwd="nE7jA%5m" ... />
+  <Entry1 Active="Yes" username="GENEXIS" web_passwd="1234" ... />
+  <Entry2 Active="Yes" username="user3"   web_passwd="1234" ... />
+</Account>
+```
+
+and `/usr/etc/passwd` has `admin:$1$$iC.dUsGpxNNJGeOm1dFio/:0:0:root:/:/bin/sh`,
+which is MD5-crypt for `1234`. That is the login for the `utelnetd -l
+/bin/login -d` service on port 56090 (`telnet` in `/usr/etc/services`).
+
+If the **bootloader** password itself was changed, no remote path helps: you
+need the serial console, and a changed bldr password means a vendor password
+recovery procedure or a flash programmer. Keep your own dump and record the
+credentials you find.
 
 ## 2. Root without the web password: Samba magic script
 
