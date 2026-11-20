@@ -46,7 +46,7 @@ SMB. Use the SMB1 client config in this kit; modern `smbclient` refuses this old
 server by default.
 
 ```sh
-# run all commands from the repository root
+cd unlocked-GX-Titatnium-2122A   # or whatever you named the clone
 SMB="smbclient -s tools/smb.conf //192.168.1.1/Samba_Share -U admin%1234"
 
 # download the live config

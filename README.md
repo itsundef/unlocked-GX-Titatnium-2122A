@@ -61,7 +61,7 @@ Samba's classic `magic script` feature.
 2. On Linux, with `smbclient` installed:
 
    ```sh
-   # run from the repository root
+   cd unlocked-GX-Titatnium-2122A   # or whatever you named the clone
    ./tools/samba_telnet.sh 192.168.1.1 admin 1234
    telnet 192.168.1.1 23
    ```
@@ -92,7 +92,7 @@ The vendor updater writes the **inactive** bank, so the stock firmware stays on
 the other bank.
 
 ```sh
-# run all commands from the repository root
+cd unlocked-GX-Titatnium-2122A   # or whatever you named the clone
 
 # inspect the image (optional)
 python3 tools/t2122a_patch.py --check \

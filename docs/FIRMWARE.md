@@ -69,7 +69,7 @@ Always prefer your own stock image. Dump it first (see
 [RECOVERY.md](RECOVERY.md)), then:
 
 ```sh
-# run all commands from the repository root
+cd unlocked-GX-Titatnium-2122A   # or whatever you named the clone
 
 # inspect only
 python3 tools/t2122a_patch.py --check /path/to/your-stock.bin
